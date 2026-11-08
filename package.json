@@ -1,0 +1,19 @@
+{
+  "name": "paper_reader",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "hsh",
+  "type": "commonjs",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "electron": "^45.2.3"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^6.5.438"
+  }
+}
