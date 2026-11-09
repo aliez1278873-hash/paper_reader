@@ -150,7 +150,3 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
-
-# 笔记和截图
-*.md
-*.png
