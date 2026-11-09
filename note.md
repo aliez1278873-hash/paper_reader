@@ -24,9 +24,60 @@
 添加文件：
 - `reader.js`给按钮安排动作，并负责打开、绘制和翻页
 
+
+
 #### 下面打开预先准备PDF文件
 ![文件选择窗口](image-2.png)
 #### PDF正常渲染
 ![PDF渲染](image-3.png)
 
 #### 接下来先将第一阶段项目使用git保存本地版本，再上传github
+```
+git init -b main
+git config user.name "略"
+git config user.email "略"
+
+git add .
+git status
+
+git commit -m "完成 PDF 解析与基础阅读功能"
+git log --oneline
+
+git remote add origin https://github.com/略/paper_reader.git
+git push -u origin main
+```
+![提交github ](image-4.png)
+![第一次提交](image-5.png)
+
+#### 当前已经完成了PDF的解析跟阅读功能，接下来的任务是能使用鼠标拖选文字，并显示在右侧原文区，翻页后清除旧选区
+##### 实现方式：在画布上方再放一层真正可选的网页文字
+```
+用户鼠标操作
+      ↓
+上层：透明的文字层——可以选择文字
+下层：Canvas 画布——负责页面的视觉效果
+```
+##### 页面外观来自下方画布，选择文字的能力来自上方文字层
+
+
+- 我修改`reader.js`创建文字层，接收选区变化，将有效选区显示到右侧
+- ai修改`index.html`为画布和文字层安排同一个容器,给右侧原文加上可查找的 ID
+- ai修改`style.css`让两层重叠，普通正文按面板宽度换行
+  
+![alt text](image-6.png)
+
+##### 实际选区测试
+![alt text](image-7.png)
+![alt text](image-8.png)
+![alt text](image-9.png)
+![alt text](image-10.png)
+![alt text](image-11.png)
+##### 文字选区没发现错误，使用起来也很跟手，高亮部分也没错位，但是公式识别跟特殊符号识别不好，文字的排版也没有特别好，贴图里的文字没法选取，水印的文字也无法选取，PDF外的文字选区没有录入右边的显示区
+
+![alt text](image-12.png)
+#### 发现高亮部分有错位
+![alt text](image-13.png)
+在ai的帮助下找到问题
+![alt text](image-14.png)
+
+#### 部分问题解决第二版暂时git存档

@@ -8,6 +8,7 @@
       content="default-src 'self'; script-src 'self'; style-src 'self'; worker-src 'self' blob:; font-src 'self' blob: data:; img-src 'self' blob: data:; object-src 'none'; base-uri 'none'"
     />
     <title>论文阅读器</title>
+    <link rel="stylesheet" href="node_modules/pdfjs-dist/web/pdf_viewer.css" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -34,14 +35,17 @@
             <h2 id="empty-title">打开一篇论文</h2>
             <p id="empty-description">点击右上角“打开 PDF”选择本地文件</p>
           </div>
-          <canvas id="pdf-canvas" role="img" aria-label="PDF 页面" hidden></canvas>
+          <div id="page-stage" class="page-stage" hidden>
+            <canvas id="pdf-canvas" aria-hidden="true"></canvas>
+            <div id="pdf-text-layer" class="textLayer" aria-label="PDF 文字层"></div>
+          </div>
         </div>
       </section>
 
       <aside class="translation" aria-label="翻译区">
         <section class="text-pane" aria-labelledby="source-heading">
           <h2 id="source-heading">原文</h2>
-          <p>选中的文字会显示在这里</p>
+          <p id="source-text" class="source-text">选中的文字会显示在这里</p>
         </section>
         <section class="text-pane" aria-labelledby="result-heading">
           <h2 id="result-heading">译文</h2>

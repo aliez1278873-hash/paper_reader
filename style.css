@@ -170,9 +170,30 @@ p {
 
 #pdf-canvas {
   display: block;
-  margin: 0 auto;
   background: #ffffff;
+}
+
+.page-stage {
+  position: relative;
+  margin: 0 auto;
   box-shadow: 0 2px 12px #25354b14;
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+}
+
+.page-stage .textLayer {
+  position: absolute;
+  inset: 0;
+}
+
+.source-text {
+  color: #25354b;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.source-text .preserve-line-breaks {
+  white-space: pre-wrap;
 }
 
 .reader-status {

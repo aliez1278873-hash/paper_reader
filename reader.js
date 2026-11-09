@@ -1,10 +1,15 @@
 import * as pdfjs from './node_modules/pdfjs-dist/build/pdf.mjs';
 // 指定 PDF.js 配套的Worker文件位置，以当前js文件为基准，找到pdf.worker.min.mjs文件
+pdfjs.TextLayer.fontFamilyMap.set(
+  'monospace',
+  '"Courier New", monospace',
+);
+
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   './node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url,
 ).href;
-// 1. 引入 PDF.js，设置 Worker 地址
+// 引入 PDF.js，设置 Worker 地址
 
 const openButton = document.getElementById('open-pdf'); //对应打开PDF按钮
 const fileInput = document.getElementById('pdf-file'); //对应文件选择框
@@ -18,12 +23,72 @@ const emptyReader = document.getElementById('empty-reader'); //没有显示 PDF 
 const emptyTitle = document.getElementById('empty-title'); //占位标题
 const emptyDescription = document.getElementById('empty-description'); //标题下的描述
 const canvas = document.getElementById('pdf-canvas'); //对应画布页面
-// 2. 根据 HTML 的 id 取得页面元素
+const pageStage = document.getElementById('page-stage'); //对应画布的容器,里面同时放画布和文字层
+const textLayer = document.getElementById('pdf-text-layer'); //对应文字层
+const sourceText = document.getElementById('source-text'); //对应右侧显示原文的位置
+// 根据 HTML 的 id 取得页面元素
 
 let pdfDocument = null; // 当前打开的 PDF 文档对象
 let currentPage = 0; //当前页码
 let busy = false; // 是否正在处理
-// 3. 声明 pdfDocument、currentPage、busy
+let selectedSource = null; // 当前选中的选择结果
+// 声明 pdfDocument、currentPage、busy
+
+function captureSelection() {
+//取得有效选区
+
+  if (busy || !pdfDocument || pageStage.hidden) return; //正在加载或绘制|没有打开文档|PDF页面当前处于隐藏状态
+
+  const selection = window.getSelection(); //读取当前网页中的文字选择
+  if (!selection || selection.isCollapsed || selection.rangeCount !== 1){
+    //没取得选区对象|没有选中内容|不是一个连续选择范围
+    return;
+  }
+
+  const range = selection.getRangeAt(0); //Range表示一段连续文档内容的对象
+  if(!textLayer.contains(range.startContainer) || !textLayer.contains(range.endContainer)){
+    //检查起点和终点都在文本层内部
+    return;
+  }
+
+  const text = selection.toString().trim(); //得到选中的文字,去掉两端空白，中间的空格、标点和换行仍然保留
+  if(!text) return;
+
+  selectedSource = {text, pageNumber: currentPage}; //更新程序数据
+  displaySourceText(selectedSource.text); //更新界面
+}
+
+function displaySourceText(text){
+//把捕获到的纯文本渲染进容器里
+  const parts = text.split(/(\r?\n[ \t]*\r?\n(?:[ \t]*\r?\n)*)/); //\r?\n表一次换行 [ \t]表零个或多个空格、Tab ?:[ \t]*\r?\n)*继续接收更多空行
+
+  const nodes = parts.map(part => { //把parts数组里的每段文字，分别装进一个<span>网页元素中。
+    const span = document.createElement('span');
+    span.textContent = part;
+    
+    const paragraphBreak = /^\r?\n[ \t]*\r?\n/.test(part); // 检查它是不是空行分隔符
+
+    const structured = /^[ \t]*(?:[-*•]|\d+[.)])\s+/m.test(part) //检查列表标记
+      || /^(?: {4}|\t)/m.test(part) //检查明显缩进
+      || /[=∑∫]/.test(part); //检查几个数学符号
+
+    if (paragraphBreak || structured){
+      span.className = 'preserve-line-breaks';
+    }  //给段落分隔或结构化片段加这个class
+
+    return span
+  })
+  sourceText.replaceChildren(...nodes);//用传入的节点列表替换掉容器所有旧子节点
+}
+
+
+
+function clearSource() {
+//清理三个位置
+  selectedSource = null; //清理程序记住的选区数据
+  sourceText.textContent = '选中的文字会显示在这里'; //覆盖右侧的显示内容
+  window.getSelection()?.removeAllRanges(); //清除浏览器高亮的选区
+}
 
 function updateControls() {
   // 根据状态更新按钮和页码
@@ -39,7 +104,9 @@ function updateControls() {
 function showError(title, description) {
   // 更新错误显示
 
-  canvas.hidden = true; //隐藏画布
+  pageStage.hidden = true;
+  textLayer.replaceChildren();
+  clearSource();
   emptyReader.hidden = false; //显示占位区域
   emptyTitle.textContent = title;
   emptyDescription.textContent = description; 
@@ -50,6 +117,9 @@ function showError(title, description) {
 async function renderPage(pageNumber) {
   // 取一页 → 计算尺寸 → 绘制 → 显示
 
+  clearSource(); //清掉上一页的选择
+  textLayer.replaceChildren();  //移除上一页的透明文字
+  pageStage.hidden = true;  //新页面准备好之前，隐藏整个页面容器
   const page = await pdfDocument.getPage(pageNumber); //取得页码对应的PDF页面
   const originalViewport = page.getViewport({ scale: 1 }); //取得这页在缩放比例为 1 时的尺寸信息
   const availableWidth = Math.max(200, pageScroll.clientWidth - 48); //可用宽度，最小取200，-48是因为css中左右边距各为24
@@ -57,7 +127,11 @@ async function renderPage(pageNumber) {
   const viewport = page.getViewport({ scale }); //按计算的比例缩放
   const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
   //devicePixelRatio表示设备物理像素与 CSS 像素的比率，最多按 2 倍准备画布，兼顾清晰度和资源占用
-
+  pageStage.style.width = `${viewport.width}px`;
+  pageStage.style.height = `${viewport.height}px`;
+  //给画布和文字层提供共同的位置、宽高
+  pageStage.style.setProperty('--total-scale-factor', String(scale * page.userUnit));
+  //使用PDF.js 配套样式需要的缩放变量，用来正确计算文字尺寸 page.userUnit表示PDF自身的单位比例
   canvas.width = Math.ceil(viewport.width * pixelRatio);
   canvas.height = Math.ceil(viewport.height * pixelRatio);
   //控制画布内部的实际像素，像素宽度需要是整数，所以ceil向上取整
@@ -72,10 +146,30 @@ async function renderPage(pageNumber) {
     transform: [pixelRatio, 0, 0, pixelRatio, 0, 0], //纯缩放矩阵：x 方向放大 pixelRatio 倍，y 方向也放大 pixelRatio 倍
   }).promise; // 等待绘制任务的 promise 完成。
 
-  canvas.setAttribute('aria-label', `PDF第 ${pageNumber} 页`); //更新页面的标签
-  canvas.hidden = false; //显示画布
-  emptyReader.hidden = true; //隐藏占位区域
-  pageScroll.scrollTop = 0; //滚动到顶部
+  let textStatus = ''; //用来记录提示文字
+  try {
+    const textContent = await page.getTextContent(); //取得当前 PDF 页面的文字内容
+    const layer = new pdfjs.TextLayer({ //创建并生成文字层
+      textContentSource: textContent,
+      container: textLayer,
+      viewport,
+    });
+    await layer.render();
+    if(!textContent.items.some(item => typeof item.str === 'string' && item.str.trim())){
+    //先确认它是字符串，再检查去掉空白后是否还有内容,外面的 ! 再把结果取反就变成：这一页没有任何非空文字项
+      textStatus = '本页未检测到可选择的文字。';
+    }
+  } catch{
+    textLayer.replaceChildren(); //清空容器
+    textStatus = '本页文字层暂时无法生成，仍可阅读页面。'
+  }
+
+  textLayer.setAttribute('aria-label', `PDF 第 ${pageNumber} 页文字层`);
+  pageStage.hidden = false;  // 显示整个页面：画布和文字层
+  emptyReader.hidden = true; // 隐藏占位区域
+  pageScroll.scrollTop = 0;  // 阅读区滚动到顶部
+  return textStatus;        
+
 }
 
 async function openPdf(file) {
@@ -91,7 +185,10 @@ async function openPdf(file) {
   busy = true; //标记正在处理
   updateControls(); //更新按钮状态
   status.textContent = '正在打开PDF……'; 
-  canvas.hidden = true; //隐藏画布
+  pageStage.hidden = true;
+  textLayer.replaceChildren();
+  clearSource();
+  //新文件加载期间不会继续保留旧文件的透明文字或选区
   let loadingTask; //在外面定义让catch和finally也能访问到，方便在出错时销毁任务
 
   try {
@@ -102,7 +199,7 @@ async function openPdf(file) {
     fileName.textContent = file.name; //显示新文件名
     fileName.title = file.name; 
     pageLabel.textContent = '— / —';
-    if(oldDocument) await oldDocument.destroy(); //销毁旧文档，释放内存
+    if(oldDocument) await oldDocument.loadingTask.destroy(); //销毁旧文档，释放内存
 
     const bytes = new Uint8Array(await file.arrayBuffer()); //读取文件为 ArrayBuffer，再创建按字节访问该缓冲区的 Uint8Array 视图
     loadingTask = pdfjs.getDocument({ 
@@ -116,8 +213,7 @@ async function openPdf(file) {
     });
     pdfDocument = await loadingTask.promise; //等待PDF加载成功，然后将得到的文档对象保存到pdfDocument
     currentPage = 1;  //打开成功后，显示第一页
-    await renderPage(currentPage); //渲染第一页
-    status.textContent = ''; //清除界面上的提示
+    status.textContent = await renderPage(currentPage);//等待当前页绘制完成，再把返回的提示文字显示到状态栏
   }catch(error){
     console.error('打开 PDF 失败：', error);
     if(loadingTask) await loadingTask.destroy().catch(() => {}); //如果加载任务存在，销毁释放内存 内层catch是为了防止destroy失败时抛出异常，影响外层catch的执行
@@ -147,8 +243,7 @@ async function changePage(offset) {
   updateControls();
   status.textContent = '正在显示页面……';
   try {
-    await renderPage(currentPage); //等待绘制完成
-    status.textContent = '';
+    status.textContent = await renderPage(currentPage);
   }catch {
     showError('这一页暂时无法显示', '可以尝试翻到其他页面，或重新打开 PDF。'); //等待的过程中出现错误，跳入错误显示
   }finally {
@@ -164,4 +259,5 @@ fileInput.addEventListener('change', async () => {
 }) //用户选好文件后，打开这份PDF；处理结束后，清空文件选择框的记录，让下次可以再次选择同一个文件。
 previousButton.addEventListener('click', () => changePage(-1));
 nextButton.addEventListener('click', () => changePage(1));
-// 4. 最后给按钮和文件选择框安排各自的动作
+document.addEventListener('selectionchange', captureSelection);
+// 最后给按钮和文件选择框安排各自的动作
