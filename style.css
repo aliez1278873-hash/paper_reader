@@ -205,3 +205,73 @@ p {
 .reader-status:empty {
   display: none;
 }
+
+.toolbar-actions, .pane-heading, .settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pane-heading {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.pane-heading h2 {
+  margin: 0;
+}
+
+.pane-heading button {
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.translation-text {
+  color: #25354b;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.translation-status {
+  margin-bottom: 12px;
+  color: #8b5423;
+  font-size: 13px;
+}
+
+.translation-status:empty {
+  display: none;
+}
+
+dialog {
+  width: min(480px, calc(100vw - 48px));
+  padding: 28px;
+  border: 1px solid #dbe2ec;
+  border-radius: 12px;
+  color: #25354b;
+  background: #ffffff;
+}
+
+dialog::backdrop {
+  background: #25354b66;
+}
+
+#settings-form {
+  display: grid;
+  gap: 12px;
+}
+
+#settings-form input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dbe2ec;
+  border-radius: 7px;
+  font: inherit;
+}
+
+.settings-note {
+  font-size: 12px;
+}
+
+.settings-actions {
+  justify-content: flex-end;
+}

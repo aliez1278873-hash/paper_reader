@@ -14,7 +14,10 @@
   <body>
     <header class="toolbar">
       <h1>论文阅读器</h1>
-      <button id="open-pdf" type="button">打开 PDF</button>
+      <div class="toolbar-actions">
+        <button id="model-settings" type="button">模型设置</button>
+        <button id="open-pdf" type="button">打开 PDF</button>
+      </div>
       <input id="pdf-file" type="file" accept=".pdf,application/pdf" hidden />
     </header>
 
@@ -48,11 +51,35 @@
           <p id="source-text" class="source-text">选中的文字会显示在这里</p>
         </section>
         <section class="text-pane" aria-labelledby="result-heading">
-          <h2 id="result-heading">译文</h2>
-          <p>翻译结果会显示在这里</p>
+          <div class="pane-heading">
+            <h2 id="result-heading">译文</h2>
+            <div class="toolbar-actions">
+              <button id="translate" type="button" disabled>翻译</button>
+              <button id="stop-translation" type="button" hidden>停止</button>
+            </div>
+          </div>
+          <p id="translation-status" class="translation-status" role="status" aria-live="polite"></p>
+          <p id="translation-text" class="translation-text">翻译结果会显示在这里</p>
         </section>
       </aside>
     </main>
+    <dialog id="settings-dialog" aria-labelledby="settings-heading">
+      <form id="settings-form" autocomplete="off">
+        <h2 id="settings-heading">模型设置</h2>
+        <label for="api-base">接口基础地址</label>
+        <input id="api-base" type="url" required value="https://api.deepseek.com/v1" />
+        <label for="api-model">模型名称</label>
+        <input id="api-model" required maxlength="200" value="deepseek-flash" />
+        <label for="api-key">API 密钥</label>
+        <input id="api-key" type="password" autocomplete="new-password" required />
+        <p class="settings-note">配置仅本次运行有效，关闭后需重新填写密钥。模型调用由服务商计费。</p>
+        <p id="settings-status" class="translation-status" role="status"></p>
+        <div class="settings-actions">
+          <button id="cancel-settings" type="button">取消</button>
+          <button id="save-settings" type="submit">使用配置</button>
+        </div>
+      </form>
+    </dialog>
     <script type="module" src="reader.js"></script>
   </body>
 </html>

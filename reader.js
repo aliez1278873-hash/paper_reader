@@ -26,18 +26,33 @@ const canvas = document.getElementById('pdf-canvas'); //对应画布页面
 const pageStage = document.getElementById('page-stage'); //对应画布的容器,里面同时放画布和文字层
 const textLayer = document.getElementById('pdf-text-layer'); //对应文字层
 const sourceText = document.getElementById('source-text'); //对应右侧显示原文的位置
+const translateButton = document.getElementById('translate');
+const stopButton = document.getElementById('stop-translation');
+const translationText = document.getElementById('translation-text');
+const translationStatus = document.getElementById('translation-status');
+const settingsButton = document.getElementById('model-settings');
+const settingsDialog = document.getElementById('settings-dialog');
+const settingsForm = document.getElementById('settings-form');
+const settingsStatus = document.getElementById('settings-status');
+const apiBase = document.getElementById('api-base');
+const apiModel = document.getElementById('api-model');
+const apiKey = document.getElementById('api-key');
+const saveSettingsButton = document.getElementById('save-settings');
 // 根据 HTML 的 id 取得页面元素
 
 let pdfDocument = null; // 当前打开的 PDF 文档对象
 let currentPage = 0; //当前页码
 let busy = false; // 是否正在处理
 let selectedSource = null; // 当前选中的选择结果
-// 声明 pdfDocument、currentPage、busy
+let modelReady = false; //本次运行是否已经配置模型
+let sourceVersion = 0; //当前翻译上下文的版本编号
+let translationRun = null; //当前正在等待的翻译任务
+let pointerSelecting = false; //鼠标是否正在拖选
 
 function captureSelection() {
 //取得有效选区
 
-  if (busy || !pdfDocument || pageStage.hidden) return; //正在加载或绘制|没有打开文档|PDF页面当前处于隐藏状态
+  if (busy || pointerSelecting || !pdfDocument || pageStage.hidden) return; //正在加载或绘制|正在选择|没有打开文档|PDF页面当前处于隐藏状态
 
   const selection = window.getSelection(); //读取当前网页中的文字选择
   if (!selection || selection.isCollapsed || selection.rangeCount !== 1){
@@ -54,8 +69,12 @@ function captureSelection() {
   const text = selection.toString().trim(); //得到选中的文字,去掉两端空白，中间的空格、标点和换行仍然保留
   if(!text) return;
 
+  if (selectedSource?.text === text && selectedSource.pageNumber === currentPage) return;
+  //如果还是同一页、同一段原文，就不用重新更新
   selectedSource = {text, pageNumber: currentPage}; //更新程序数据
   displaySourceText(selectedSource.text); //更新界面
+  invalidateTranslation();
+  updateTranslationControls();
 }
 
 function displaySourceText(text){
@@ -81,13 +100,28 @@ function displaySourceText(text){
   sourceText.replaceChildren(...nodes);//用传入的节点列表替换掉容器所有旧子节点
 }
 
-
+function invalidateTranslation() {
+  //作废旧译文
+  sourceVersion += 1;
+  if (translationText.textContent !== '翻译结果会显示在这里') translationText.textContent = '翻译结果会显示在这里';
+  //清掉旧译文
+  if (translationStatus.textContent) translationStatus.textContent = '';
+  //清掉旧状态提示
+  if (translationRun) {
+    translationRun.cancelled = true;
+    void window.modelAPI.cancel().catch(() => {});
+    //如果旧翻译还没结束，就标记取消并通知主进程停止。
+  }
+}
 
 function clearSource() {
-//清理三个位置
+  //清空原文
+  pointerSelecting = false;
   selectedSource = null; //清理程序记住的选区数据
   sourceText.textContent = '选中的文字会显示在这里'; //覆盖右侧的显示内容
   window.getSelection()?.removeAllRanges(); //清除浏览器高亮的选区
+  invalidateTranslation();
+  updateControls();
 }
 
 function updateControls() {
@@ -99,7 +133,94 @@ function updateControls() {
   //这两按钮根据是否正在处理/是否有文件/当前页码是否合法来决定是否禁用（||是短路符，前面成立后面不会执行防止读到null属性报错）
   pageLabel.textContent = pdfDocument ? `${currentPage} / ${pdfDocument.numPages}` : '— / —';
   //使用三元式来决定页码部分的显示，有PDF文件显示当前页码和总页数，没有显示占位符
+  updateTranslationControls();
 }
+
+function updateTranslationControls() {
+  //更新翻译的选项
+  const disabled = busy || !selectedSource || !modelReady || Boolean(translationRun);
+  //四个只要满足一个就禁用翻译按钮
+  if (translateButton.disabled !== disabled) translateButton.disabled = disabled;
+  if (stopButton.hidden !== !translationRun) stopButton.hidden = !translationRun;
+  if (settingsButton.disabled !== Boolean(translationRun)) settingsButton.disabled = Boolean(translationRun);
+  //根据状态更新翻译、停止跟设置按钮
+}
+
+async function translateSelection() {
+  if (!selectedSource || busy || translationRun || !modelReady) return;
+  //检查是否满足翻译条件
+  const run = { text: selectedSource.text, version: sourceVersion, cancelled: false };
+  // 冻结本次原文与版本
+  translationRun = run;
+  translationText.textContent = '';
+  translationStatus.textContent = '正在翻译…';
+  //更新界面
+  updateControls();
+  //根据返回的结果更新
+  try {
+    const reply = await window.modelAPI.translate(run.text);
+    if (run.cancelled || run.version !== sourceVersion) return;
+    if (!reply.ok) throw new Error(reply.message);
+    translationText.textContent = reply.value;
+    translationStatus.textContent = '';
+  } catch (error) {
+    if (!run.cancelled && run.version === sourceVersion) translationStatus.textContent = error.message;
+  } finally {
+    if (translationRun === run) translationRun = null;
+    updateControls();
+  }
+}
+
+async function showSettings() {
+  const reply = await window.modelAPI.getSettings();
+  //页面向主进程询问当前配置
+  if (!reply.ok) { translationStatus.textContent = reply.message; return; }
+  apiBase.value = reply.value.baseUrl;
+  apiModel.value = reply.value.model;
+  apiKey.value = '';
+  apiKey.required = !reply.value.hasKey;
+  apiKey.placeholder = reply.value.hasKey ? '本次运行已配置，留空保留' : '填写服务商密钥';
+  settingsStatus.textContent = '';
+  settingsDialog.showModal();
+  //打开设置对话框
+}
+
+settingsForm.addEventListener('submit', async event => {
+  //监听用户是否提交
+  event.preventDefault();
+  //阻止表单默认提交，避免页面刷新。
+  saveSettingsButton.disabled = true;
+  try {
+    const reply = await window.modelAPI.saveSettings({ baseUrl: apiBase.value, model: apiModel.value, apiKey: apiKey.value });
+    if (!reply.ok) throw new Error(reply.message);
+    modelReady = reply.value.hasKey;
+    apiKey.value = '';
+    invalidateTranslation();
+    updateControls();
+    settingsDialog.close();
+  } catch (error) {
+    settingsStatus.textContent = error.message;
+  } finally {
+    saveSettingsButton.disabled = false;
+  }
+});
+settingsButton.addEventListener('click', () => {
+  //监听用户是否点击设置按钮
+  void showSettings().catch(() => { translationStatus.textContent = '暂时无法打开模型设置。'; });
+});
+document.getElementById('cancel-settings').addEventListener('click', () => settingsDialog.close());
+//监听用户是否点击取消设置
+settingsDialog.addEventListener('close', () => { apiKey.value = ''; settingsStatus.textContent = ''; });
+//监听用户是否关闭对话框
+translateButton.addEventListener('click', translateSelection);
+//监听用户是否点击翻译
+stopButton.addEventListener('click', () => {
+//监听用户是否点击停止按钮
+  if (!translationRun) return;
+  translationRun.cancelled = true;
+  translationStatus.textContent = '已停止等待，远端可能仍在处理或产生费用。未自动重试。';
+  void window.modelAPI.cancel().catch(() => { translationStatus.textContent = '停止请求未能送达，仍在等待当前调用结束。'; });
+});
 
 function showError(title, description) {
   // 更新错误显示
@@ -260,4 +381,24 @@ fileInput.addEventListener('change', async () => {
 previousButton.addEventListener('click', () => changePage(-1));
 nextButton.addEventListener('click', () => changePage(1));
 document.addEventListener('selectionchange', captureSelection);
+
+textLayer.addEventListener('pointerdown', () => {pointerSelecting = true;});
+//鼠标按下 → 标记正在拖选
+document.addEventListener('pointerup', () => {
+  //鼠标松开后，提交最终选区
+  if (!pointerSelecting) return; //没有在文字层开始拖选，就直接退出
+  pointerSelecting = false; //结束拖选状态
+  requestAnimationFrame(captureSelection);
+  //安排下一帧读取
+});
+document.addEventListener('pointercancel', () => {pointerSelecting = false;});
+//操作被中断时，解除标记
+window.addEventListener('blur', () => {pointerSelecting = false;});
+//窗口失去焦点时，也解除标记
 // 最后给按钮和文件选择框安排各自的动作
+
+Promise.resolve().then(() => window.modelAPI.getSettings()).then(reply => {
+    if (reply.ok) {modelReady = reply.value.hasKey;}
+    updateControls();
+  }).catch(() => {
+    translationStatus.textContent ='桌面连接未就绪，请通过 npm start 启动程序。';});

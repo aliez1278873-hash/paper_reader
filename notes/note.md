@@ -82,3 +82,38 @@ git push -u origin main
 
 #### 部分问题解决第二版暂时git存档
 ![alt text](image-15.png)
+
+### 接下来的任务是选中原文，通过模型API得到译文（选择原文 → 点击翻译 → 等待 → 显示译文，并处理配置、失败、停止和切换原文）
+
+```
+reader.js：用户点击“翻译”
+        ↓
+preload.js：提供页面可以调用的方法
+        ↓ 本机内部消息
+main.js：接收任务、取得模型配置
+        ↓
+model-client.js：发送网络请求
+        ↓
+模型 API：返回译文
+        ↓
+沿原路返回，reader.js 更新界面
+```
+
+Electron 的页面与主进程职责不同，通过明确的桥接方法联系，[标准使用方式参考](https://www.electronjs.org/docs/latest/tutorial/ipc)
+- 先让ai修改`index.html`增加设置对话框、翻译和停止按钮，并且修改`style.css`追加本课新增的样式
+- 增加文件`preload.js`渲染进程跟主进程之间的桥接脚本，让页面能够向 Electron主进程提出请求
+- 增加文件`model-client.js`用于请求模型的接口，功能是配置校验 → 构造请求 → 发 HTTP 请求 → 解析与校验响应 → 返回译文
+- 修改文件`main.js`接收页面任务、管理配置和请求
+- 修改文件`reader.js`增加点击翻译 → 等待模型 → 显示译文 → 处理失败和停止。
+#### 先让ai检查代码的问题
+![alt text](image-20.png)
+#### 按照ai的提示完成修改并启动软件
+##### 先配置模型设置
+![alt text](image-16.png)
+#### apikey的信息暂存在内存，后续改进apikey加密存储在本地，能实现长久读取
+![alt text](image-19.png)
+![alt text](image-17.png)
+##### 实际测试
+![alt text](image-18.png)
+##### 发现存在公式识别格式有问题，后续版本修改
+#### 暂存第三版
